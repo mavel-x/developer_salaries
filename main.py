@@ -1,12 +1,13 @@
-import requests
-from statistics import mean
-from collections import defaultdict
-from dotenv import load_dotenv
 import os
-from terminaltables import AsciiTable
+from collections import defaultdict
 from itertools import count
+from statistics import mean
 
-top_10_languages_2021 = (
+import requests
+from dotenv import load_dotenv
+from terminaltables import AsciiTable
+
+TOP_LANGUAGES_2021 = (
         'JavaScript',
         'Python',
         'Java',
@@ -28,11 +29,14 @@ def get_hh_vacancies(language, additional_params=None, area='Москва'):
         'Москва': 1,
         'Санкт-Петербург': 2
     }
+
+    vacancies_period = 30
+    vacancies_per_page = 100
     params = {
         'text': f'программист {language}',
         'area': areas[area],
-        'period': 30,
-        'per_page': 100,
+        'period': vacancies_period,
+        'per_page': vacancies_per_page,
     }
     if additional_params:
         params.update(additional_params)
@@ -45,16 +49,17 @@ def get_average_salary_for_language_hh(language):
     salaries = []
     vacancies_processed = 0
     vacancies_found = 0
-    for page in range(20):  # Max allowed number with 100 items per page before HH stops returning data
-        vacancies = get_hh_vacancies(language, additional_params={'page': page})
-        if page == 0:
-            vacancies_found = vacancies['found']
-        for vacancy in vacancies['items']:
-            predicted_salary = predict_rub_salary_hh(vacancy)
-            if predicted_salary:
-                salaries.append(predicted_salary)
-        vacancies_processed += len(vacancies['items'])
-        if page >= vacancies['pages']:
+    for page in count(0):
+        try:
+            vacancies = get_hh_vacancies(language, additional_params={'page': page})
+            if page == 0:
+                vacancies_found = vacancies['found']
+            for vacancy in vacancies['items']:
+                predicted_salary = predict_rub_salary_hh(vacancy)
+                if predicted_salary:
+                    salaries.append(predicted_salary)
+            vacancies_processed += len(vacancies['items'])
+        except requests.exceptions.HTTPError:
             break
     if salaries:
         average_salary = int(mean([salary for salary in salaries]))
@@ -72,6 +77,7 @@ def get_sj_vacancies(api_key, language, additional_params=None):
     headers = {
         'X-Api-App-Id': api_key
     }
+    vacancies_per_page = 100
 
     # The query has to be pretty specific, otherwise SJ returns very unrelated vacancies
     params = {
@@ -81,7 +87,7 @@ def get_sj_vacancies(api_key, language, additional_params=None):
         'keywords[1][srws]': 1,  # search only in vacancy title
         'keywords[1][skwc]': 'and',
         'keywords[1][keys]': language,
-        'count': 100,
+        'count': vacancies_per_page,
     }
     if additional_params:
         params.update(additional_params)
@@ -153,14 +159,14 @@ def predict_rub_salary_sj(vacancy):
 
 def get_salaries_for_top_languages_hh():
     salaries_by_language = defaultdict(dict)
-    for language in top_10_languages_2021:
+    for language in TOP_LANGUAGES_2021:
         salaries_by_language[language] = get_average_salary_for_language_hh(language)
     return salaries_by_language
 
 
 def get_salaries_for_top_languages_sj(api_key):
     salaries_by_language = defaultdict(dict)
-    for language in top_10_languages_2021:
+    for language in TOP_LANGUAGES_2021:
         salaries_by_language[language] = get_average_salary_for_language_sj(api_key, language)
     return salaries_by_language
 
